@@ -25,7 +25,7 @@ jobs:
             -storepass android -keypass android \
             -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Create dummy google-services.json
+      - name: Create google-services.json
         run: |
           cat > app/google-services.json << 'EOF'
           {
@@ -38,7 +38,7 @@ jobs:
               "client_info": {
                 "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
                 "android_client_info": {
-                  "package_name": "com.example.synctracker"
+                  "package_name": "com.aistudio.synctracker.xyzpq"
                 }
               },
               "api_key": [{"current_key": "dummy"}],
