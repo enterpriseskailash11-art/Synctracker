@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- Header Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="SyncTracker Today"
+            android:textColor="#6750A4"
+            android:textStyle="bold"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/widget_progress_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0/0 (0%)"
+            android:textColor="#49454F"
+            android:textStyle="bold"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Progress Bar -->
+    <ProgressBar
+        android:id="@+id/widget_progress_bar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:progressDrawable="@android:drawable/progress_horizontal"
+        android:progress="0"
+        android:max="100"
+        android:layout_marginBottom="8dp" />
+
+    <!-- List of Tasks (Linear Layout) -->
+    <LinearLayout
+        android:id="@+id/widget_tasks_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_weight="1">
+
+        <!-- Task Row 1 -->
+        <LinearLayout
+            android:id="@+id/widget_row_1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="3dp"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/widget_row_1_check"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="☐"
+                android:textColor="#6750A4"
+                android:textSize="16sp"
+                android:layout_marginRight="6dp"
+                android:textStyle="bold"/>
+            <TextView
+                android:id="@+id/widget_row_1_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Task 1"
+                android:textColor="#1D1B20"
+                android:textSize="12sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Task Row 2 -->
+        <LinearLayout
+            android:id="@+id/widget_row_2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="3dp"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/widget_row_2_check"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="☐"
+                android:textColor="#6750A4"
+                android:textSize="16sp"
+                android:layout_marginRight="6dp"
+                android:textStyle="bold"/>
+            <TextView
+                android:id="@+id/widget_row_2_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Task 2"
+                android:textColor="#1D1B20"
+                android:textSize="12sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Task Row 3 -->
+        <LinearLayout
+            android:id="@+id/widget_row_3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="3dp"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/widget_row_3_check"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="☐"
+                android:textColor="#6750A4"
+                android:textSize="16sp"
+                android:layout_marginRight="6dp"
+                android:textStyle="bold"/>
+            <TextView
+                android:id="@+id/widget_row_3_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Task 3"
+                android:textColor="#1D1B20"
+                android:textSize="12sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Task Row 4 -->
+        <LinearLayout
+            android:id="@+id/widget_row_4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="3dp"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/widget_row_4_check"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="☐"
+                android:textColor="#6750A4"
+                android:textSize="16sp"
+                android:layout_marginRight="6dp"
+                android:textStyle="bold"/>
+            <TextView
+                android:id="@+id/widget_row_4_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Task 4"
+                android:textColor="#1D1B20"
+                android:textSize="12sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Empty Text Indicator -->
+        <TextView
+            android:id="@+id/widget_empty_text"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="No active daily trackers.\nTap here to add one!"
+            android:textColor="#79747E"
+            android:textSize="12sp"
+            android:visibility="visible" />
+
+        <!-- More Tasks indicator -->
+        <TextView
+            android:id="@+id/widget_more_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="+ more tasks in app"
+            android:textColor="#6750A4"
+            android:textSize="10sp"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            android:textStyle="italic" />
+    </LinearLayout>
+
+</LinearLayout>

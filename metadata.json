@@ -1,0 +1,6 @@
+{
+  "name": "SyncTracker",
+  "description": "Daily activity and monthly target tracker synchronized with Google Keep and Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
