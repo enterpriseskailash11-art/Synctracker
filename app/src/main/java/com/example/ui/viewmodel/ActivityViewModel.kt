@@ -32,6 +32,28 @@ class ActivityViewModel(application: Application) : AndroidViewModel(application
     val progress: StateFlow<UserProgress?>
     val badges: StateFlow<List<UnlockedBadge>>
 
+    // Persistent SharedPreferences for user convenience and cross-device sync configuration
+    private val prefs = application.getSharedPreferences("sync_tracker_prefs", Context.MODE_PRIVATE)
+
+    val googleSheetsToken = MutableStateFlow(prefs.getString("google_sheets_token", "") ?: "")
+    val googleSpreadsheetId = MutableStateFlow(prefs.getString("google_spreadsheet_id", "") ?: "")
+    val googleSheetName = MutableStateFlow(prefs.getString("google_sheet_name", "Sheet1") ?: "Sheet1")
+    val googleUserEmail = MutableStateFlow(prefs.getString("google_user_email", "") ?: "")
+
+    fun saveSyncSettings(token: String, spreadsheetId: String, sheetName: String, email: String) {
+        prefs.edit().apply {
+            putString("google_sheets_token", token)
+            putString("google_spreadsheet_id", spreadsheetId)
+            putString("google_sheet_name", sheetName)
+            putString("google_user_email", email)
+            apply()
+        }
+        googleSheetsToken.value = token
+        googleSpreadsheetId.value = spreadsheetId
+        googleSheetName.value = sheetName
+        googleUserEmail.value = email
+    }
+
     // Synchronization statuses
     private val _syncStatus = MutableStateFlow<String>("Not Synchronized")
     val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
@@ -219,33 +241,138 @@ class ActivityViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Optional Direct REST Sync with Google Sheets API (for power users with Access Tokens).
+     * Bidirectional REST Sync with Google Sheets API.
+     * This pulls the sheet contents, merges modifications and new trackers, updates Room, and pushes the final state back.
      */
-    fun performDirectGoogleSheetsSync(context: Context, accessToken: String, spreadsheetId: String, sheetName: String = "Sheet1") {
+    fun performDirectGoogleSheetsSync(
+        context: Context,
+        accessToken: String,
+        spreadsheetId: String,
+        sheetName: String = "Sheet1",
+        gmailAccount: String = ""
+    ) {
         if (accessToken.isBlank() || spreadsheetId.isBlank()) {
             Toast.makeText(context, "Please enter valid Access Token and Spreadsheet ID", Toast.LENGTH_LONG).show()
             return
         }
 
+        // Save settings persistently
+        saveSyncSettings(accessToken, spreadsheetId, sheetName, gmailAccount)
+
         viewModelScope.launch(Dispatchers.IO) {
             _isSyncing.value = true
-            _syncStatus.value = "Syncing with Google Sheets API..."
+            _syncStatus.value = "Starting Bidirectional Sync..."
             
             try {
-                val csvData = generateCsvContent(tasks.value)
-                
-                // Formulate spreadsheet update body or append body using the Google Sheets API v4
-                // We will write values directly using a simple API PUT request
                 val client = OkHttpClient()
                 val targetSheet = if (sheetName.isBlank()) "Sheet1" else sheetName
-                val encodedRange = java.net.URLEncoder.encode("$targetSheet!A1:I${tasks.value.size + 2}", "UTF-8")
-                val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange?valueInputOption=USER_ENTERED"
+                val encodedRange = java.net.URLEncoder.encode("$targetSheet!A1:I500", "UTF-8")
                 
+                // 1. GET current sheet tasks to pull changes from other devices
+                _syncStatus.value = "Pulling updates from Cloud..."
+                val getUrl = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange"
+                val getRequest = Request.Builder()
+                    .url(getUrl)
+                    .get()
+                    .addHeader("Authorization", "Bearer $accessToken")
+                    .build()
+
+                val sheetTasks = mutableListOf<ActivityTask>()
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+
+                try {
+                    client.newCall(getRequest).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val bodyString = response.body?.string() ?: ""
+                            if (bodyString.isNotBlank()) {
+                                val jsonObject = org.json.JSONObject(bodyString)
+                                val valuesArray = jsonObject.optJSONArray("values")
+                                if (valuesArray != null && valuesArray.length() > 1) {
+                                    for (i in 1 until valuesArray.length()) { // Skip the header row
+                                        val rowArray = valuesArray.optJSONArray(i) ?: continue
+                                        val title = if (rowArray.length() > 1) rowArray.optString(1) else ""
+                                        if (title.isBlank()) continue
+                                        
+                                        val desc = if (rowArray.length() > 2) rowArray.optString(2) else ""
+                                        val category = if (rowArray.length() > 3) rowArray.optString(3) else "DAILY_TRACKER"
+                                        val isCompleted = if (rowArray.length() > 4) rowArray.optString(4).toBoolean() else false
+                                        
+                                        val compDateStr = if (rowArray.length() > 5) rowArray.optString(5) else "N/A"
+                                        val completedAt = if (compDateStr != "N/A" && compDateStr.isNotBlank()) {
+                                            try { sdf.parse(compDateStr)?.time } catch(e: Exception) { null }
+                                        } else null
+                                        
+                                        val comment = if (rowArray.length() > 6) rowArray.optString(6) else ""
+                                        val points = if (rowArray.length() > 7) rowArray.optString(7).toIntOrNull() ?: 10 else 10
+                                        
+                                        val createdDateStr = if (rowArray.length() > 8) rowArray.optString(8) else ""
+                                        val createdAt = if (createdDateStr.isNotBlank()) {
+                                            try { sdf.parse(createdDateStr)?.time ?: System.currentTimeMillis() } catch(e: Exception) { System.currentTimeMillis() }
+                                        } else System.currentTimeMillis()
+
+                                        sheetTasks.add(ActivityTask(
+                                            id = 0,
+                                            title = title,
+                                            description = desc,
+                                            category = category,
+                                            isCompleted = isCompleted,
+                                            completedAt = completedAt,
+                                            comment = comment,
+                                            pointsAwarded = points,
+                                            createdAt = createdAt
+                                        ))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // It's fine if GET fails (e.g., sheet is blank), we will just merge from local and upload
+                }
+
+                // 2. Local Merge with sheetTasks
+                _syncStatus.value = "Merging cloud & local trackers..."
+                val localTasks = tasks.value
+                for (sheetTask in sheetTasks) {
+                    val matchingLocal = localTasks.find {
+                        it.title.equals(sheetTask.title, ignoreCase = true) &&
+                        it.category.equals(sheetTask.category, ignoreCase = true)
+                    }
+                    if (matchingLocal != null) {
+                        // Merge completion state and comments
+                        val mergedCompleted = matchingLocal.isCompleted || sheetTask.isCompleted
+                        val mergedCompletedAt = if (mergedCompleted) {
+                            matchingLocal.completedAt ?: sheetTask.completedAt ?: System.currentTimeMillis()
+                        } else null
+                        val mergedComment = when {
+                            matchingLocal.comment.isNotBlank() && sheetTask.comment.isNotBlank() && matchingLocal.comment != sheetTask.comment -> {
+                                "${matchingLocal.comment} | ${sheetTask.comment}"
+                            }
+                            matchingLocal.comment.isNotBlank() -> matchingLocal.comment
+                            else -> sheetTask.comment
+                        }
+                        
+                        val updatedLocal = matchingLocal.copy(
+                            isCompleted = mergedCompleted,
+                            completedAt = mergedCompletedAt,
+                            comment = mergedComment
+                        )
+                        repository.insertTask(updatedLocal)
+                    } else {
+                        // New task pulled from sheet! (Created on another device)
+                        repository.insertTask(sheetTask.copy(id = 0))
+                    }
+                }
+
+                // 3. Fetch latest local state after merge and Push back to Sheet
+                _syncStatus.value = "Uploading synced trackers to Cloud..."
+                val finalTasks = repository.allTasks.firstOrNull() ?: emptyList()
+
+                val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange?valueInputOption=USER_ENTERED"
                 val rows = mutableListOf<List<String>>()
                 rows.add(listOf("ID", "Title", "Description", "Category", "Completed", "Completion Date", "Comment", "Points Awarded", "Created Date"))
                 
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                tasks.value.forEach { task ->
+                finalTasks.forEach { task ->
                     val compDate = if (task.completedAt != null) sdf.format(Date(task.completedAt)) else "N/A"
                     rows.add(listOf(
                         task.id.toString(),
@@ -284,26 +411,45 @@ class ActivityViewModel(application: Application) : AndroidViewModel(application
 
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
-                        _syncStatus.value = "Synced with Sheets API Successfully!"
+                        _syncStatus.value = "Synced with Sheets successfully at ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())}"
                         launch(Dispatchers.Main) {
-                            Toast.makeText(context, "Direct Sheets Sync Successful!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Bidirectional cloud sync successful! All devices in sync.", Toast.LENGTH_LONG).show()
                         }
                     } else {
                         val errorMsg = response.body?.string() ?: "Unknown error"
-                        _syncStatus.value = "Sheets Sync Failed: HTTP ${response.code}"
+                        _syncStatus.value = "Sheets Push Failed: HTTP ${response.code}"
                         launch(Dispatchers.Main) {
-                            Toast.makeText(context, "Direct Sheets Sync Failed: ${response.code}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Cloud sync push failed: ${response.code}", Toast.LENGTH_LONG).show()
                         }
                     }
                 }
+
+                // Also trigger widget update
+                SyncTrackerWidgetProvider.triggerUpdate(getApplication())
+
             } catch (e: Exception) {
-                _syncStatus.value = "Sheets Sync Error: ${e.message}"
+                _syncStatus.value = "Sync Error: ${e.message}"
                 launch(Dispatchers.Main) {
-                    Toast.makeText(context, "Direct Sheets Sync Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Cloud Sync Error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             } finally {
                 _isSyncing.value = false
             }
+        }
+    }
+
+    /**
+     * Sync with Google Sheets using saved settings
+     */
+    fun triggerPersistedSheetsSync(context: Context) {
+        val token = googleSheetsToken.value
+        val sheetId = googleSpreadsheetId.value
+        val sName = googleSheetName.value
+        val email = googleUserEmail.value
+        if (token.isNotBlank() && sheetId.isNotBlank()) {
+            performDirectGoogleSheetsSync(context, token, sheetId, sName, email)
+        } else {
+            Toast.makeText(context, "Please configure Sheets settings in Sync tab first!", Toast.LENGTH_LONG).show()
         }
     }
 }
