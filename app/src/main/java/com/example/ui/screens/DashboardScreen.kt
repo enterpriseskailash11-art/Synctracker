@@ -131,7 +131,7 @@ fun DashboardScreen(
                     // Score Display
                     Row(
                         modifier = Modifier
-                            .padding(end = 16.dp)
+                            .padding(end = 12.dp)
                             .background(
                                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                                 shape = RoundedCornerShape(16.dp)
@@ -159,6 +159,32 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontSize = 14.sp
                         )
+                    }
+
+                    // Bidirectional Cloud Sync Icon (Visible when sheets sync configured)
+                    val savedToken by viewModel.googleSheetsToken.collectAsStateWithLifecycle()
+                    if (savedToken.isNotBlank()) {
+                        IconButton(
+                            onClick = { viewModel.triggerPersistedSheetsSync(context) },
+                            enabled = !isSyncing,
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .testTag("top_app_bar_sync_button")
+                        ) {
+                            if (isSyncing) {
+                                CircularProgressIndicator(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Sync,
+                                    contentDescription = "Sync all devices",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -226,10 +252,11 @@ fun DashboardScreen(
                     tasks = tasks,
                     syncStatus = syncStatus,
                     isSyncing = isSyncing,
+                    viewModel = viewModel,
                     onShareKeep = { viewModel.shareToGoogleKeep(context) },
                     onShareSheets = { viewModel.shareTasksAsCsv(context) },
-                    onDirectSheetsSync = { token, sheetId, name -> 
-                        viewModel.performDirectGoogleSheetsSync(context, token, sheetId, name)
+                    onDirectSheetsSync = { token, sheetId, name, email -> 
+                        viewModel.performDirectGoogleSheetsSync(context, token, sheetId, name, email)
                     }
                 )
                 2 -> ProgressTab(
@@ -692,14 +719,21 @@ fun SyncTab(
     tasks: List<ActivityTask>,
     syncStatus: String,
     isSyncing: Boolean,
+    viewModel: ActivityViewModel,
     onShareKeep: () -> Unit,
     onShareSheets: () -> Unit,
-    onDirectSheetsSync: (String, String, String) -> Unit
+    onDirectSheetsSync: (String, String, String, String) -> Unit
 ) {
-    var developerMode by remember { mutableStateOf(false) }
-    var sheetsAccessToken by remember { mutableStateOf("") }
-    var spreadsheetId by remember { mutableStateOf("") }
-    var sheetName by remember { mutableStateOf("Sheet1") }
+    val savedToken by viewModel.googleSheetsToken.collectAsStateWithLifecycle()
+    val savedSpreadsheetId by viewModel.googleSpreadsheetId.collectAsStateWithLifecycle()
+    val savedSheetName by viewModel.googleSheetName.collectAsStateWithLifecycle()
+    val savedEmail by viewModel.googleUserEmail.collectAsStateWithLifecycle()
+
+    var developerMode by remember { mutableStateOf(savedToken.isNotBlank()) }
+    var sheetsAccessToken by remember(savedToken) { mutableStateOf(savedToken) }
+    var spreadsheetId by remember(savedSpreadsheetId) { mutableStateOf(savedSpreadsheetId) }
+    var sheetName by remember(savedSheetName) { mutableStateOf(savedSheetName) }
+    var gmailAccount by remember(savedEmail) { mutableStateOf(savedEmail) }
 
     Column(
         modifier = Modifier
@@ -874,7 +908,7 @@ fun SyncTab(
 
                 Divider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
 
-                // Developer Direct Sync Header
+                // Cloud Multi-Device Account Sync Header
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -883,8 +917,8 @@ fun SyncTab(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Direct Google Sheets API Sync (Developer Mode)",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Cloud Multi-Device Account Sync (Google Sheets)",
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -903,9 +937,20 @@ fun SyncTab(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "Paste a temporary Google OAuth Access Token and your Spreadsheet ID to synchronize the sheets dynamically via Google's official REST API.",
+                            text = "Authenticate with your Google/Gmail account and point to a shared Spreadsheet ID to instantly synchronize all trackers and activities across multiple devices.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+
+                        OutlinedTextField(
+                            value = gmailAccount,
+                            onValueChange = { gmailAccount = it },
+                            label = { Text("Google/Gmail Account Email", fontSize = 11.sp) },
+                            textStyle = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("sheets_email_input"),
+                            singleLine = true
                         )
 
                         OutlinedTextField(
@@ -942,7 +987,7 @@ fun SyncTab(
                         )
 
                         Button(
-                            onClick = { onDirectSheetsSync(sheetsAccessToken, spreadsheetId, sheetName) },
+                            onClick = { onDirectSheetsSync(sheetsAccessToken, spreadsheetId, sheetName, gmailAccount) },
                             enabled = !isSyncing && sheetsAccessToken.isNotBlank() && spreadsheetId.isNotBlank() && sheetName.isNotBlank(),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -957,8 +1002,8 @@ fun SyncTab(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Text("Push to Sheet via API", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text("Synchronize Trackers (Two-Way)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

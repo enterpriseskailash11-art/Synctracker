@@ -3,6 +3,8 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -58,11 +60,10 @@ jobs:
         with:
           name: SyncTracker-APK
           path: app/build/outputs/apk/debug/*.apk
+
       - name: Release APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: "SyncTracker Build #${{ github.run_number }}"
           files: app/build/outputs/apk/debug/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
