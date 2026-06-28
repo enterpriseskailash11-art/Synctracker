@@ -3,8 +3,6 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -51,19 +49,22 @@ jobs:
           EOF
 
       - name: Build APK
-        run: gradle assembleDebug --stacktrace
+        run: gradle assembleDebug
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: SyncTracker-APK
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Release APK
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: "SyncTracker Build #${{ github.run_number }}"
+          body: "Auto build from latest commit"
           files: app/build/outputs/apk/debug/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
